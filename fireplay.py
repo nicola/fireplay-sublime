@@ -9,9 +9,14 @@ import zipfile
 import uuid
 import json
 
+from twisted.internet import defer
+from fireplaylib.fxdevtools.fxconnection import connect, protocol_map
+from fireplaylib.fxdevtools.async import MainLoop
+
 from fireplaylib.client import MozClient
 from fireplaylib import b2g_helper
 from fireplaylib import firefox_helper
+reload(sys.modules['fireplay'])
 reload(sys.modules['fireplaylib.client'])
 reload(sys.modules['fireplaylib.b2g_helper'])
 reload(sys.modules['fireplaylib.firefox_helper'])
@@ -22,29 +27,60 @@ FIREPLAY_CSS_RELOAD = "document.styleSheets.reload()"
 FIREPLAY_RELOAD = "location.reload()"
 
 
+def poke():
+    print "poking!"
+    sublime.set_timeout(loop.process, 0)
+
+
+from twisted.internet import defer
+from twisted.internet.defer import setDebugging
+
+from fireplaylib.fxdevtools.protocol import connect
+from fireplaylib.fxdevtools import fxconnection
+import json
+
+setDebugging(False)
+
+loop = MainLoop(protocol_map, poke)
+
 class Fireplay:
     '''
     The Fireplay main client
     '''
     # TODO Blocking at the moment
     def __init__(self, host, port):
-        self.client = MozClient(host, port)
-        self.root = None
+        # self.client = MozClient(host, port)
+        self.client = None
         self.selected_tab = None
         self.selected_app = None
+        self.connection = connect(host, port)
+        self.connection.addCallback(self.connected)
+        self.connection.addErrback(self.errback)
 
-    def get_root(self, force=False):
-        if not self.root or force:
-            self.root = self.client.send({
-                'to': 'root',
-                'type': 'listTabs'
-            })
+        loop.start()
 
-        return self.root
+    @defer.deferredGenerator
+    def connected(self, client):
+        self.client = client
 
-    def get_tabs(self, force=False):
-        self.get_root(force)
-        return self.root['tabs']
+        d = defer.waitForDeferred(client.root.echo("hello"))
+        yield d
+        print "echo result: " + d.getResult()
+        
+        # d = defer.waitForDeferred(client.root.list_tabs())
+        # yield d
+        # tabs = d.getResult()
+
+    def errback(self, e):
+        print "ERROR: %s" % (e,)
+
+
+    # TODO what about force?
+    @defer.inlineCallbacks
+    def get_tabs(self):
+        root = yield self.client.root.list_tabs()
+        print "UUU", root
+        defer.returnValue(root['tabs'])
 
     # TODO allow multiple tabs with multiple codebase
     def select_tab(self, tab):
@@ -237,28 +273,26 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
     '''
     The Fireplay command to connect Firefox or FirefoxOS to a given port
     '''
+    @defer.inlineCallbacks
     def run(self, edit, port=6000):
         global fp
 
         if not fp:
             fp = Fireplay('localhost', port)
 
-        try:
-            fp.get_tabs(True)
-        except:
-            fp = None
-            self.view.run_command('fireplay_start')
-            return
+            connection = yield fp.connection
+            print "connection", connection
 
-
-        if fp.client.applicationType == 'browser':
+        if fp.client.root.hello["applicationType"] == 'browser':
             self.show_tabs()
         else:
             self.show_manifests()
 
+    @defer.inlineCallbacks
     def show_tabs(self):
-        self.tabs = [t for t in fp.root['tabs'] if t['url'].find('about:') == -1]
-        items = [t['url'] for t in self.tabs]
+        tabs = yield fp.get_tabs()
+        self.tabs = [t for t in tabs if t.url.find('about:') == -1]
+        items = [t.url for t in self.tabs]
         items.append("Disconnect from Firefox")
         self.view.window().show_quick_panel(items, self.selecting_tab)
 
