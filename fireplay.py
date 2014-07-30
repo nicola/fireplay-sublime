@@ -27,10 +27,6 @@ FIREPLAY_CSS_RELOAD = "document.styleSheets.reload()"
 FIREPLAY_RELOAD = "location.reload()"
 
 
-def poke():
-    print "poking!"
-    sublime.set_timeout(loop.process, 0)
-
 
 from twisted.internet import defer
 from twisted.internet.defer import setDebugging
@@ -41,8 +37,6 @@ import json
 
 setDebugging(False)
 
-loop = MainLoop(protocol_map, poke)
-
 class Fireplay:
     '''
     The Fireplay main client
@@ -51,13 +45,18 @@ class Fireplay:
     def __init__(self, host, port):
         # self.client = MozClient(host, port)
         self.client = None
+        self.tabs = None
         self.selected_tab = None
         self.selected_app = None
         self.connection = connect(host, port)
         self.connection.addCallback(self.connected)
         self.connection.addErrback(self.errback)
+        self.loop = MainLoop(protocol_map, self.poke)
+        self.loop.start()
 
-        loop.start()
+    def poke(self):
+        print "poking!"
+        sublime.set_timeout(self.loop.process, 0)
 
     @defer.deferredGenerator
     def connected(self, client):
@@ -65,7 +64,6 @@ class Fireplay:
 
         d = defer.waitForDeferred(client.root.echo("hello"))
         yield d
-        print "echo result: " + d.getResult()
         
         # d = defer.waitForDeferred(client.root.list_tabs())
         # yield d
@@ -78,9 +76,14 @@ class Fireplay:
     # TODO what about force?
     @defer.inlineCallbacks
     def get_tabs(self):
+        if (self.tabs):
+            defer.returnValue(self.tabs)
+            return
+
         root = yield self.client.root.list_tabs()
         print "UUU", root
-        defer.returnValue(root['tabs'])
+        self.tabs = root['tabs']
+        defer.returnValue(self.tabs)
 
     # TODO allow multiple tabs with multiple codebase
     def select_tab(self, tab):
@@ -278,19 +281,23 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
         global fp
 
         if not fp:
+            print "NOT"
             fp = Fireplay('localhost', port)
 
-            connection = yield fp.connection
-            print "connection", connection
+        connection = yield fp.connection
+        print "connection", connection
 
         if fp.client.root.hello["applicationType"] == 'browser':
+            print "browser"
             self.show_tabs()
         else:
             self.show_manifests()
 
     @defer.inlineCallbacks
     def show_tabs(self):
+        print "getting the tabs"
         tabs = yield fp.get_tabs()
+        print "got em", tabs
         self.tabs = [t for t in tabs if t.url.find('about:') == -1]
         items = [t.url for t in self.tabs]
         items.append("Disconnect from Firefox")
@@ -390,8 +397,9 @@ class FireplayStartCommand(sublime_plugin.TextCommand):
         global fp
 
         mapping = {}
-
+        print "fireplay i am starting", fp
         if fp:
+            print "STARTING FIREPLAY"
             self.view.run_command('fireplay_start_any')
             return
 
