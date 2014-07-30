@@ -195,6 +195,7 @@ class Front(Pool):
         m = Method(method["name"], method)
         name = decamel(method["name"])
 
+        print "method with name", name
         setattr(cls, "method_%s" % (name,), m)
         setattr(cls, "impl_%s" % (name,),
           lambda self, *args, **kwargs: self.request(m, *args, **kwargs))
@@ -227,9 +228,11 @@ class Front(Pool):
         # By default we put implementations in impl_, but
         # if there's no override defined, forward the bare name
         # to the impl.
+        print "get attr for name", name
         if not name.startswith("impl_"):
             impl = "impl_%s" % (name,)
             if hasattr(self, impl):
+                print "it has attr", impl
                 return getattr(self, impl)
 
         raise AttributeError(

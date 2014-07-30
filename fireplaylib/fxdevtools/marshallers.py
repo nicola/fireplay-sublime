@@ -20,10 +20,13 @@ class Request(object):
     def __convert(self, template, ctx, args, kwargs):
         if isinstance(template, dict) and "_arg" in template:
             t = get_type(template["type"])
+            print "ARG in template", template['type'], t, ctx, args[template["_arg"]]
             return t.write(args[template["_arg"]], ctx)
         elif isinstance(template, dict):
             ret = {}
             for name in template:
+                print "name and temp", name, template[name]
+                print "conversion", ctx, args, kwargs
                 ret[name] = self.__convert(template[name], ctx, args, kwargs)
             return ret
         elif isinstance(template, list) or isinstance(template, tuple):

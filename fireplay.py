@@ -17,6 +17,7 @@ from fireplaylib.client import MozClient
 from fireplaylib import b2g_helper
 from fireplaylib import firefox_helper
 reload(sys.modules['fireplay'])
+reload(sys.modules['fireplaylib.fxdevtools'])
 reload(sys.modules['fireplaylib.client'])
 reload(sys.modules['fireplaylib.b2g_helper'])
 reload(sys.modules['fireplaylib.firefox_helper'])
@@ -101,10 +102,10 @@ class Fireplay:
     @defer.inlineCallbacks
     def reload_tab(self):
         # TODO Avoid touching prototype, shrink in one call only
-        res = yield self.selected_tab.consoleActor.evaluateJS({
-            'text': FIREPLAY_RELOAD,
-            'frameActor': None
-        })
+        res = yield self.selected_tab.console.evaluate_js(
+            FIREPLAY_RELOAD,
+            None
+        )
         print res
         defer.returnValue(res)
 
@@ -112,15 +113,15 @@ class Fireplay:
     def reload_css(self):
 
         # TODO Avoid touching prototype, shrink in one call only
-        yield self.selected_tab.consoleActor.evaluateJS({
-            'text': FIREPLAY_CSS,
-            'frameActor': None
-        })
+        yield self.selected_tab.consoleActor.evaluateJS(
+            FIREPLAY_CSS,
+            None
+        )
 
-        res = yield self.selected_tab.consoleActor.evaluateJS({
-            'text': FIREPLAY_CSS_RELOAD,
-            'frameActor': None
-        })
+        res = yield self.selected_tab.consoleActor.evaluateJS(
+            FIREPLAY_CSS_RELOAD,
+            None
+        )
         defer.returnValue(res)
 
     @defer.inlineCallbacks
@@ -297,6 +298,8 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
         print "getting the tabs"
         tabs = yield fp.get_tabs()
         print "got em", tabs
+        for t in tabs:
+            print "inspector", t.inspector, t.console
         self.tabs = [t for t in tabs if t.url.find('about:') == -1]
         items = [t.url for t in self.tabs]
         items.append("Disconnect from Firefox")
