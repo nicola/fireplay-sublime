@@ -99,7 +99,10 @@ def discover_rdp_ports():
         for line in output.split('\n'):
 
             m = re.search('^(firefox|b2g)[-bin]?.*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:([0-9]*)', line)
-            if m:
+            if not m:
+                continue
+
+            try:
                 platform = m.group(1)
                 port = int(m.group(2))
 
@@ -110,26 +113,30 @@ def discover_rdp_ports():
                     firefoxos.append(port)
                 elif (platform == 'firefox'):
                     firefox.append(port)
+            except:
+                continue
 
     elif SYSTEM == 'Linux':
         output = os.popen(NETSTAT_CMD).read()
         for line in output.split('\n'):
             m = re.search('tcp.*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:([0-9]+).*LISTEN.*/(firefox|b2g)', line)
 
-            if m:
-                try:
-                    platform = m.group(2)
-                    port = int(m.group(1))
+            if not m:
+                continue
 
-                    if port == 2828:
-                        continue
+            try:
+                platform = m.group(2)
+                port = int(m.group(1))
 
-                    if (platform == 'b2g'):
-                        firefoxos.append(port)
-                    elif (platform == 'firefox'):
-                        firefox.append(port)
-                except:
+                if port == 2828:
                     continue
+
+                if (platform == 'b2g'):
+                    firefoxos.append(port)
+                elif (platform == 'firefox'):
+                    firefox.append(port)
+            except:
+                continue
     else:
         import psutil
         for p in psutil.process_iter():
