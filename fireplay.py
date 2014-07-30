@@ -48,26 +48,35 @@ class Fireplay:
         self.tabs = None
         self.selected_tab = None
         self.selected_app = None
-        self.connection = connect(host, port)
-        self.connection.addCallback(self.connected)
-        self.connection.addErrback(self.errback)
+        self.connected = None
+        self.host = host
+        self.port = port
         self.loop = MainLoop(protocol_map, self.poke)
-        self.loop.start()
 
     def poke(self):
         print "poking!"
         sublime.set_timeout(self.loop.process, 0)
 
-    @defer.deferredGenerator
-    def connected(self, client):
-        self.client = client
+    def connect(self):
+        return defer.maybeDeferred(self._connect)
 
-        d = defer.waitForDeferred(client.root.echo("hello"))
-        yield d
-        
-        # d = defer.waitForDeferred(client.root.list_tabs())
-        # yield d
-        # tabs = d.getResult()
+    def _connect(self):
+        if self.connected:
+            return self.connected
+
+        # XXX: grab port and hostname from settings maybe?
+        self.connected = connect(self.host, self.port)
+        self.connected.addCallback(self._connected)
+
+        self.loop.start()
+
+        return self.connected
+
+    def _connected(self, client):
+        print "setting connected to %s" % (self.client,)
+        self.client = client
+        self.connected = client
+
 
     def errback(self, e):
         print "ERROR: %s" % (e,)
@@ -276,7 +285,6 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
     '''
     The Fireplay command to connect Firefox or FirefoxOS to a given port
     '''
-    @defer.inlineCallbacks
     def run(self, edit, port=6000):
         global fp
 
@@ -284,9 +292,13 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
             print "NOT"
             fp = Fireplay('localhost', port)
 
-        connection = yield fp.connection
-        print "connection", connection
+        print "connecting"
+        d = fp.connect()
+        d.addCallback(self.start_fireplay)
 
+    def start_fireplay(self, something):
+        print something
+        print "connection exists"
         if fp.client.root.hello["applicationType"] == 'browser':
             print "browser"
             self.show_tabs()

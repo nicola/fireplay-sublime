@@ -170,7 +170,7 @@ def add_type(t):
     if t.name in registered_types:
         registered = registered_types[t.name]
         if not isinstance(registered, PlaceholderType) or registered.concrete:
-            raise ValueError("Type %s registered twice!" % (t.name,))
+            return t
         registered.concrete = t
         return registered
 
