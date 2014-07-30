@@ -72,6 +72,7 @@ class FirefoxDevtoolsClient(object):
         #self.register_actor_descriptions(protodesc.actor_descriptions)
 
     def register_actor_descriptions(self, descriptions):
+        print "descriptions i got", descriptions
         for desc in descriptions["types"].values():
             type_name = desc["typeName"]
             category = desc["category"]

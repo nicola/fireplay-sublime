@@ -98,57 +98,44 @@ class Fireplay:
     def select_tab(self, tab):
         self.selected_tab = tab
 
-    def reload_tab():
+    @defer.inlineCallbacks
+    def reload_tab(self):
         # TODO Avoid touching prototype, shrink in one call only
-        self.client.send({
-            'to': console,
-            'type': 'evaluateJS',
+        res = yield self.selected_tab.consoleActor.evaluateJS({
             'text': FIREPLAY_RELOAD,
             'frameActor': None
         })
+        print res
+        defer.returnValue(res)
 
+    @defer.inlineCallbacks
     def reload_css(self):
-        console = self.selected_tab['consoleActor']
 
         # TODO Avoid touching prototype, shrink in one call only
-        self.client.send({
-            'to': console,
-            'type': 'evaluateJS',
+        yield self.selected_tab.consoleActor.evaluateJS({
             'text': FIREPLAY_CSS,
             'frameActor': None
         })
 
-        return self.client.send({
-            'to': console,
-            'type': 'evaluateJS',
+        res = yield self.selected_tab.consoleActor.evaluateJS({
             'text': FIREPLAY_CSS_RELOAD,
             'frameActor': None
         })
+        defer.returnValue(res)
 
+    @defer.inlineCallbacks
     def get_apps(self):
-        return self.client.send({
-            'to': self.root['webappsActor'],
-            'type': 'getAll'
-        })['apps']
+        res = yield self.client.root.webappsActor.getAll()
+        defer.returnValue(res['apps'])
 
+    @defer.inlineCallbacks
     def uninstall(self, manifestURL):
-        self.client.send({
-            'to': self.root['webappsActor'],
-            'type': 'close',
-            'manifestURL': manifestURL
-        })
-        self.client.send({
-            'to': self.root['webappsActor'],
-            'type': 'uninstall',
-            'manifestURL': manifestURL
-        })
+        yield self.client.root.webappsActor.close({'manifestURL': manifestURL})
+        yield self.client.root.webappsActor.uninstall({'manifestURL': manifestURL})
 
+    @defer.inlineCallbacks
     def launch(self, manifestURL):
-        self.client.send({
-            'to': self.root['webappsActor'],
-            'type': 'launch',
-            'manifestURL': manifestURL
-        })
+        yield self.client.root.webappsActor.launch({'manifestURL': manifestURL})
 
     def deploy(self, target_app_path, run=True, debug=False):
         app_manifest = get_manifest(target_app_path)[1]
@@ -259,25 +246,25 @@ class FireplayCssReloadOnSave(sublime_plugin.EventListener):
         # TODO this should be a setting
         if re.search(get_setting('reload_on_save_regex_styles'), view.file_name()):
 
-            try:
-                if fp.client.applicationType == 'browser':
+            # try:
+                if fp.client.root.hello["applicationType"] == 'browser':
                     fp.reload_css()
                 else:
                     fp.inject_css()
-            except:
-                fp = None
-                view.run_command('fireplay_start')
+            # except:
+            #     fp = None
+            #     view.run_command('fireplay_start')
 
         elif reload_on_save and re.search(get_setting('reload_on_save_regex_reload'), view.file_name()):
-            try:
-                if fp.client.applicationType == 'browser':
+            # try:
+                if fp.client.root.hello["applicationType"] == 'browser':
                     fp.reload_tab()
                     pass
                 else:
                     fp.deploy(fp.selected_app['local_path'])
-            except:
-                fp = None
-                view.run_command('fireplay_start')
+            # except:
+            #     fp = None
+            #     view.run_command('fireplay_start')
 
 
 
