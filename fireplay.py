@@ -8,6 +8,7 @@ import atexit
 import zipfile
 import uuid
 import json
+from twisted.internet import defer
 
 from fireplaylib.client import MozClient
 from fireplaylib import b2g_helper
@@ -33,93 +34,108 @@ class Fireplay:
         self.selected_tab = None
         self.selected_app = None
 
+    @defer.inlineCallbacks
     def get_root(self, force=False):
         if not self.root or force:
-            self.root = self.client.send({
+            print "getting root"
+            self.root = yield self.client.send({
                 'to': 'root',
                 'type': 'listTabs'
             })
+            print "got root", self.root
 
-        return self.root
+        defer.returnValue(self.root)
 
+    @defer.inlineCallbacks
     def get_tabs(self, force=False):
-        self.get_root(force)
-        return self.root['tabs']
+        self.root = yield self.get_root(force)
+        print "self root",self.root
+        defer.returnValue(self.root['tabs'])
 
     # TODO allow multiple tabs with multiple codebase
     def select_tab(self, tab):
         self.selected_tab = tab
 
-    def reload_tab():
+    @defer.inlineCallbacks
+    def reload_tab(self):
         # TODO Avoid touching prototype, shrink in one call only
-        self.client.send({
-            'to': console,
+        yield self.client.send({
+            'to': fp.selected_tab['consoleActor'],
             'type': 'evaluateJS',
             'text': FIREPLAY_RELOAD,
             'frameActor': None
         })
 
+    @defer.inlineCallbacks
     def reload_css(self):
         console = self.selected_tab['consoleActor']
 
         # TODO Avoid touching prototype, shrink in one call only
-        self.client.send({
+        yield self.client.send({
             'to': console,
             'type': 'evaluateJS',
             'text': FIREPLAY_CSS,
             'frameActor': None
         })
 
-        return self.client.send({
+        yield self.client.send({
             'to': console,
             'type': 'evaluateJS',
             'text': FIREPLAY_CSS_RELOAD,
             'frameActor': None
         })
 
+    @defer.inlineCallbacks
     def get_apps(self):
-        return self.client.send({
+        apps = yield self.client.send({
             'to': self.root['webappsActor'],
             'type': 'getAll'
         })['apps']
+        defer.returnValue(apps)
 
+    @defer.inlineCallbacks
     def uninstall(self, manifestURL):
-        self.client.send({
+        yield self.client.send({
             'to': self.root['webappsActor'],
             'type': 'close',
             'manifestURL': manifestURL
         })
-        self.client.send({
+        yield self.client.send({
             'to': self.root['webappsActor'],
             'type': 'uninstall',
             'manifestURL': manifestURL
         })
 
+    @defer.inlineCallbacks
     def launch(self, manifestURL):
-        self.client.send({
+        yield self.client.send({
             'to': self.root['webappsActor'],
             'type': 'launch',
             'manifestURL': manifestURL
         })
 
+    @defer.inlineCallbacks
     def deploy(self, target_app_path, run=True, debug=False):
         app_manifest = get_manifest(target_app_path)[1]
 
         if run:
-            for app in self.get_apps():
+            apps = yield self.get_apps()
+            for app in apps:
                 if app['name'] == app_manifest['name']:
-                    self.uninstall(app['manifestURL'])
+                    yield self.uninstall(app['manifestURL'])
 
-        app_id = self.install(target_app_path)
+        app_id = yield self.install(target_app_path)
 
-        for app in self.get_apps():
+        apps = yield self.get_apps()
+        for app in apps:
             if app['id'] == app_id:
                 self.selected_app = app
                 self.selected_app['local_path'] = target_app_path
 
         if run:
-            self.launch(self.selected_app['manifestURL'])
+            yield self.launch(self.selected_app['manifestURL'])
 
+    @defer.inlineCallbacks
     def install(self, target_app_path):
         webappsActor = self.root['webappsActor']
 
@@ -128,7 +144,7 @@ class Fireplay:
         data = app_file.read()
         file_size = len(data)
 
-        upload_res = self.client.send({
+        upload_res = yield self.client.send({
             'to': webappsActor,
             'type': 'uploadPackage',
             'bulk': True
@@ -136,10 +152,10 @@ class Fireplay:
 
         if 'actor' in upload_res and 'BulkActor' in upload_res['actor']:
             packageUploadActor = upload_res['actor']
-            self.client.send_bulk(packageUploadActor, data)
+            yield self.client.send_bulk(packageUploadActor, data)
         else:
             # Old B2G 1.4 and older
-            self.client.send({
+            yield self.client.send({
                 'to': webappsActor,
                 'type': 'uploadPackage'
             })
@@ -148,29 +164,31 @@ class Fireplay:
             bytes = 0
             while bytes < file_size:
                 chunk = data[bytes:bytes + chunk_size]
-                self.client.send_chunk(packageUploadActor, chunk)
+                yield self.client.send_chunk(packageUploadActor, chunk)
                 bytes += chunk_size
 
         app_local_id = str(uuid.uuid4())
-        reply = self.client.send({
+        reply = yield self.client.send({
             'to': webappsActor,
             'type': 'install',
             'appId': app_local_id,
             'upload': packageUploadActor
         })
-        return reply['appId']
+        defer.returnValue(reply['appId'])
 
+    @defer.inlineCallbacks
     def inject_css(self):
 
         webappsActor = self.root['webappsActor']
-        res = self.client.send({
+        res = yield self.client.send({
             'to': webappsActor,
             'type': 'getAppActor',
             'manifestURL': self.selected_app['manifestURL']
         })
 
+        print res
         styleSheetsActor = res['actor']['styleSheetsActor']
-        res = self.client.send({
+        res = yield self.client.send({
             'to': styleSheetsActor,
             'type': 'getStyleSheets'
         })
@@ -183,14 +201,13 @@ class Fireplay:
             css_file = base_path + css_path.replace(manifest_path, '')
             f = open(css_file, 'r')
 
-            self.client.send({
+            yield self.client.send({
                 'to': styleSheet['actor'],
                 'type': 'update',
                 'text': f.read(),
                 'transition': True
             })
 
-            # TODO it is blocking. FXDEVTOOLS? new thread?
             self.client.receive()
             self.client.receive()
             self.client.receive()
@@ -237,18 +254,14 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
     '''
     The Fireplay command to connect Firefox or FirefoxOS to a given port
     '''
+    @defer.inlineCallbacks
     def run(self, edit, port=6000):
         global fp
 
         if not fp:
             fp = Fireplay('localhost', port)
 
-        try:
-            fp.get_tabs(True)
-        except:
-            fp = None
-            self.view.run_command('fireplay_start')
-            return
+        yield fp.get_tabs(True)
 
 
         if fp.client.applicationType == 'browser':
