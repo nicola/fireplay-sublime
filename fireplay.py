@@ -46,6 +46,7 @@ class Fireplay:
     def __init__(self, host, port):
         # self.client = MozClient(host, port)
         self.client = None
+        self.root = None
         self.tabs = None
         self.selected_tab = None
         self.selected_app = None
@@ -86,14 +87,22 @@ class Fireplay:
     # TODO what about force?
     @defer.inlineCallbacks
     def get_tabs(self):
-        if (self.tabs):
-            defer.returnValue(self.tabs)
-            return
-
-        root = yield self.client.root.list_tabs()
-        print "UUU", root
+        print "getting tabs"
+        root = yield self.get_root()
         self.tabs = root['tabs']
         defer.returnValue(self.tabs)
+
+    @defer.inlineCallbacks
+    def get_root(self):
+        print "getting root"
+        if self.root:
+            print "I have root"
+            defer.returnValue(self.root)
+        else:
+            print "I dont have root"
+            self.root = yield self.client.root.list_tabs()
+            print self.root
+            defer.returnValue(self.root)
 
     # TODO allow multiple tabs with multiple codebase
     def select_tab(self, tab):
@@ -106,19 +115,18 @@ class Fireplay:
             FIREPLAY_RELOAD,
             None
         )
-        print res
         defer.returnValue(res)
 
     @defer.inlineCallbacks
     def reload_css(self):
 
         # TODO Avoid touching prototype, shrink in one call only
-        yield self.selected_tab.consoleActor.evaluateJS(
+        yield self.selected_tab.console.evaluate_js(
             FIREPLAY_CSS,
             None
         )
 
-        res = yield self.selected_tab.consoleActor.evaluateJS(
+        res = yield self.selected_tab.console.evaluate_js(
             FIREPLAY_CSS_RELOAD,
             None
         )
@@ -126,29 +134,38 @@ class Fireplay:
 
     @defer.inlineCallbacks
     def get_apps(self):
-        res = yield self.client.root.webappsActor.getAll()
+        print "getting apps"
+        root = yield self.get_root()
+        print "got root", root
+        res = yield root["webappsActor"].get_all()
+        print "get all apps", res["apps"]
         defer.returnValue(res['apps'])
 
     @defer.inlineCallbacks
     def uninstall(self, manifestURL):
-        yield self.client.root.webappsActor.close({'manifestURL': manifestURL})
-        yield self.client.root.webappsActor.uninstall({'manifestURL': manifestURL})
+        yield self.client.root.webapps.close({'manifestURL': manifestURL})
+        yield self.client.root.webapps.uninstall({'manifestURL': manifestURL})
 
     @defer.inlineCallbacks
     def launch(self, manifestURL):
-        yield self.client.root.webappsActor.launch({'manifestURL': manifestURL})
+        yield self.client.root.webapps.launch({'manifestURL': manifestURL})
 
+    @defer.inlineCallbacks
     def deploy(self, target_app_path, run=True, debug=False):
+        print "deploying"
         app_manifest = get_manifest(target_app_path)[1]
 
         if run:
-            for app in self.get_apps():
+            apps = yield self.get_apps()
+            for app in apps:
                 if app['name'] == app_manifest['name']:
+                    print "found and uninstall", app["name"]
                     self.uninstall(app['manifestURL'])
 
         app_id = self.install(target_app_path)
 
-        for app in self.get_apps():
+        apps = yield self.get_apps()
+        for app in apps:
             if app['id'] == app_id:
                 self.selected_app = app
                 self.selected_app['local_path'] = target_app_path
@@ -273,6 +290,7 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
     '''
     The Fireplay command to connect Firefox or FirefoxOS to a given port
     '''
+    @defer.inlineCallbacks
     def run(self, edit, port=6000):
         global fp
 
@@ -281,11 +299,11 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
             fp = Fireplay('localhost', port)
 
         print "connecting"
-        d = fp.connect()
-        d.addCallback(self.start_fireplay)
+        connected = yield fp.connect()
+        yield fp.get_root()
+        self.start_fireplay(connected)
 
     def start_fireplay(self, something):
-        print something
         print "connection exists"
         if fp.client.root.hello["applicationType"] == 'browser':
             print "browser"
@@ -298,8 +316,6 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
         print "getting the tabs"
         tabs = yield fp.get_tabs()
         print "got em", tabs
-        for t in tabs:
-            print "inspector", t.inspector, t.console
         self.tabs = [t for t in tabs if t.url.find('about:') == -1]
         items = [t.url for t in self.tabs]
         items.append("Disconnect from Firefox")
@@ -341,11 +357,12 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
 
         folder = self.manifests[index][0]
 
-        try:
-            fp.deploy(folder)
-        except:
-            fp = None
-            self.view.run_command('fireplay_start')
+        # todo fix try
+        # try:
+        fp.deploy(folder)
+        # except:
+        #     fp = None
+        #     self.view.run_command('fireplay_start')
 
     def pretty_name(self, manifest):
         return '{0} - {1}'.format(manifest[1]['name'], manifest[1]['description'])

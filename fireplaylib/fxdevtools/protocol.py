@@ -72,7 +72,6 @@ class FirefoxDevtoolsClient(object):
         #self.register_actor_descriptions(protodesc.actor_descriptions)
 
     def register_actor_descriptions(self, descriptions):
-        print "descriptions i got", descriptions
         for desc in descriptions["types"].values():
             type_name = desc["typeName"]
             category = desc["category"]
@@ -195,7 +194,6 @@ class Front(Pool):
         m = Method(method["name"], method)
         name = decamel(method["name"])
 
-        print "method with name", name
         setattr(cls, "method_%s" % (name,), m)
         setattr(cls, "impl_%s" % (name,),
           lambda self, *args, **kwargs: self.request(m, *args, **kwargs))
@@ -203,9 +201,6 @@ class Front(Pool):
     @classmethod
     def implement_event(cls, name, template):
         prop_name = "on_" + decamel(name)
-        print "implementing event: %s" % (name,)
-        print json.dumps(template)
-        print "name: %s" % (prop_name,)
         evt = ProtocolEvent(prop_name, template)
         priv_name = "_" + prop_name
         # Since I'm using event objects, lazily create event objects when they
@@ -228,11 +223,9 @@ class Front(Pool):
         # By default we put implementations in impl_, but
         # if there's no override defined, forward the bare name
         # to the impl.
-        print "get attr for name", name
         if not name.startswith("impl_"):
             impl = "impl_%s" % (name,)
             if hasattr(self, impl):
-                print "it has attr", impl
                 return getattr(self, impl)
 
         raise AttributeError(

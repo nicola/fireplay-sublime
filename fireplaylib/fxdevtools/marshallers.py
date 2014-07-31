@@ -14,19 +14,15 @@ class Request(object):
             self.template["type"] = self.name
 
     def __call__(self, ctx, *args, **kwargs):
-        print "calling %s" % (self.name,)
         return self.__convert(self.template, ctx, args, kwargs)
 
     def __convert(self, template, ctx, args, kwargs):
         if isinstance(template, dict) and "_arg" in template:
             t = get_type(template["type"])
-            print "ARG in template", template['type'], t, ctx, args[template["_arg"]]
             return t.write(args[template["_arg"]], ctx)
         elif isinstance(template, dict):
             ret = {}
             for name in template:
-                print "name and temp", name, template[name]
-                print "conversion", ctx, args, kwargs
                 ret[name] = self.__convert(template[name], ctx, args, kwargs)
             return ret
         elif isinstance(template, list) or isinstance(template, tuple):
@@ -72,7 +68,6 @@ class ProtocolEvent(object):
             return
 
         if isinstance(template, dict):
-            print "it's a dict"
             iterable = template.iterkeys()
         elif isinstance(template, list):
             iterable = range(0, len(template))
@@ -80,7 +75,6 @@ class ProtocolEvent(object):
             return
 
         for key in iterable:
-            print "looking for %s" % (key,)
             path.append(key)
             ret = self.__find_args(template[key], path)
             if ret:
