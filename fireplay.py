@@ -34,6 +34,17 @@ class Fireplay:
         self.selected_tab = None
         self.selected_app = None
 
+    def connect(self):
+        d = defer.Deferred()
+        if self.client:
+            d.callback(self.client)
+        else:
+            self.client = MozClient(host, port)
+            d.callback(self.client)
+
+        return d
+
+
     @defer.inlineCallbacks
     def get_root(self, force=False):
         if not self.root or force:
@@ -260,6 +271,8 @@ class FireplayStartAnyCommand(sublime_plugin.TextCommand):
 
         if not fp:
             fp = Fireplay('localhost', port)
+
+        yield fp.connect()
 
         yield fp.get_tabs(True)
 
