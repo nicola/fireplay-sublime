@@ -101,10 +101,10 @@ class Fireplay:
     @defer.inlineCallbacks
     def reload_tab(self):
         # TODO Avoid touching prototype, shrink in one call only
-        res = yield self.selected_tab.consoleActor.evaluateJS({
-            'text': FIREPLAY_RELOAD,
-            'frameActor': None
-        })
+        res = yield self.selected_tab.console.evaluate_js(
+            FIREPLAY_RELOAD,
+            None
+        )
         print res
         defer.returnValue(res)
 
@@ -112,15 +112,15 @@ class Fireplay:
     def reload_css(self):
 
         # TODO Avoid touching prototype, shrink in one call only
-        yield self.selected_tab.consoleActor.evaluateJS({
-            'text': FIREPLAY_CSS,
-            'frameActor': None
-        })
+        yield self.selected_tab.console.evaluate_js(
+            FIREPLAY_CSS,
+            None
+        )
 
-        res = yield self.selected_tab.consoleActor.evaluateJS({
-            'text': FIREPLAY_CSS_RELOAD,
-            'frameActor': None
-        })
+        res = yield self.selected_tab.console.evaluate_js(
+            FIREPLAY_CSS_RELOAD,
+            None
+        )
         defer.returnValue(res)
 
     @defer.inlineCallbacks
